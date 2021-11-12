@@ -38,6 +38,16 @@ use core::ptr::write_volatile;
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Error {
+    /// Busy Error.
+    ///
+    /// A flash programming sequence was started while the previous sequence
+    /// was still in-progress.
+    Busy,
+    /// Program erase suspend error.
+    ///
+    /// A flash programming sequence was started with a program erase suspend
+    /// bit set.
+    Suspend,
     // /// A fast programming sequence is interrupted due to an error, such as:
     // ///
     // /// * alignment
@@ -142,7 +152,6 @@ impl Flash {
         unsafe {
             (*pac::FLASH::PTR).sr.write(|w| {
                 w
-                    .optverr().clear()
                     .rderr().clear()
                     .fasterr().clear()
                     .misserr().clear()
@@ -173,16 +182,32 @@ impl Flash {
         }
     }
 
-    fn wait_for_eop() {
-        todo!()
+    fn wait_for_eop() -> Result<(), Error> {
+        warn!("TODO: CHECK FOR ERRORS HERE");
+
+        loop {
+            #[cfg(not(feature = "stm32wl5x_cm0p"))]
+            let sr: u32 = unsafe { (*pac::FLASH::PTR).sr.read().bits() };
+            #[cfg(feature = "stm32wl5x_cm0p")]
+            let sr: u32 = unsafe { (*pac::FLASH::PTR).c2sr.read().bits() };
+
+            if sr & 0b1 == 0b1 {
+                return Ok(());
+            }
+        }
     }
 
     /// Peforms the standard program sequence, writing 64 bits into flash
     /// memory.
     #[allow(unused_unsafe)]
-    pub unsafe fn start_standard_program(&mut self, to: *mut u64, from: *const u64) {
-        assert!(!Self::bsy());
-        assert!(Self::pesd());
+    pub unsafe fn standard_program(&mut self, to: *mut u64, from: *const u64) -> Result<(), Error> {
+        if Self::bsy() {
+            return Err(Error::Busy);
+        }
+        if Self::pesd() {
+            return Err(Error::Suspend);
+        }
+
         Self::clear_all_err();
 
         #[cfg(not(feature = "stm32wl5x_cm0p"))]
@@ -198,11 +223,13 @@ impl Flash {
             );
         }
 
-        while Self::bsy() {}
+        Self::wait_for_eop()?;
 
         #[cfg(not(feature = "stm32wl5x_cm0p"))]
         self.flash.cr.modify(|_, w| w.pg().clear_bit());
         #[cfg(feature = "stm32wl5x_cm0p")]
         self.flash.c2cr.modify(|_, w| w.pg().clear_bit());
+
+        Ok(())
     }
 }
