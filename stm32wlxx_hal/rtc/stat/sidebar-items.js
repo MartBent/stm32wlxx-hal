@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["ALL","All status flags."],["ALRA","Alarm A flag"],["ALRB","Alarm B flag"],["ITS","Internal timestamp flag"],["SSRU","SSR underflow flag"],["TS","Timestamp flag"],["TSOV","Timestamp overflow flag"],["WUT","Wakeup timer flag"]]});
